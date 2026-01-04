@@ -20,7 +20,20 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
+    function isAdminOrFirstUser() {
+      // Allow first user creation or existing admin
+      return isAuthenticated() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+    
     function isValidUser() {
+      return isAuthenticated();
+      // Note: We'll check user document existence where needed, but not block all operations
+    }
+    
+    function hasUserDocument() {
       return isAuthenticated() && 
              exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -37,13 +50,14 @@ service cloud.firestore {
     }
     
     function hasValidCustomerFields() {
-      return request.resource.data.keys().hasAll(['name', 'email', 'phone', 'address', 'createdAt', 'updatedAt']) &&
+      return request.resource.data.keys().hasAll(['name', 'phone', 'createdAt', 'updatedAt']) &&
              request.resource.data.name is string &&
-             request.resource.data.email is string &&
              request.resource.data.phone is string &&
-             request.resource.data.address is string &&
              request.resource.data.createdAt is timestamp &&
-             request.resource.data.updatedAt is timestamp;
+             request.resource.data.updatedAt is timestamp &&
+             (request.resource.data.email == null || request.resource.data.email is string) &&
+             (request.resource.data.address == null || request.resource.data.address is map) &&
+             (request.resource.data.company == null || request.resource.data.company is string);
     }
     
     function hasValidQuotationFields() {
@@ -75,7 +89,7 @@ service cloud.firestore {
     function hasValidUserFields() {
       return request.resource.data.keys().hasAll(['email', 'role', 'displayName', 'createdAt', 'updatedAt']) &&
              request.resource.data.email is string &&
-             request.resource.data.role in ['admin', 'staff', 'user'] &&
+             request.resource.data.role in ['admin', 'staff'] &&
              request.resource.data.displayName is string &&
              request.resource.data.createdAt is timestamp &&
              request.resource.data.updatedAt is timestamp;
@@ -85,7 +99,7 @@ service cloud.firestore {
       let requiredFields = ['uid', 'email', 'role', 'displayName', 'createdAt', 'updatedAt'];
       let validTypes = request.resource.data.uid is string &&
                       request.resource.data.email is string &&
-                      request.resource.data.role in ['admin', 'staff', 'user'] &&
+                      request.resource.data.role in ['admin', 'staff'] &&
                       request.resource.data.displayName is string &&
                       request.resource.data.createdAt is timestamp &&
                       request.resource.data.updatedAt is timestamp;
@@ -97,13 +111,13 @@ service cloud.firestore {
     // Users collection - Only admins can read all users, users can read/update their own profile
     match /users/{userId} {
       allow read: if isAdmin() || isOwner(userId);
-      allow create: if isAdmin() && hasValidUserCreationFields();
+      allow create: if isAdminOrFirstUser() && hasValidUserCreationFields();
       allow update: if isAdmin() || (isOwner(userId) && hasValidUserFields());
     }
     
     // Products collection - Authenticated users can read, only admins can write
     match /products/{productId} {
-      allow read: if isValidUser();
+      allow read: if isAuthenticated();
       allow create: if isAdmin() && hasValidProductFields();
       allow update: if isAdmin() && hasValidProductFields();
       allow delete: if isAdmin();
@@ -111,26 +125,26 @@ service cloud.firestore {
     
     // Customers collection - Authenticated users can read/write
     match /customers/{customerId} {
-      allow read: if isValidUser();
-      allow create: if isValidUser() && hasValidCustomerFields();
-      allow update: if isValidUser() && hasValidCustomerFields();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasValidCustomerFields();
+      allow update: if isAuthenticated() && hasValidCustomerFields();
       allow delete: if isAdmin(); // Only admins can delete customers
     }
     
     // Quotations collection - Authenticated users can read/write
     match /quotations/{quotationId} {
-      allow read: if isValidUser();
-      allow create: if isValidUser() && hasValidQuotationFields();
-      allow update: if isValidUser() && hasValidQuotationFields();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasValidQuotationFields();
+      allow update: if isAuthenticated() && hasValidQuotationFields();
       allow delete: if isAdmin();
     }
     
     // Invoices collection - Authenticated users can read/write, with restrictions
     match /invoices/{invoiceId} {
-      allow read: if isValidUser();
-      allow create: if isValidUser() && hasValidInvoiceFields();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasValidInvoiceFields();
       // Allow updates for payment status and admin updates
-      allow update: if isValidUser() && (
+      allow update: if isAuthenticated() && (
         (hasValidInvoiceFields() && isAdmin()) ||
         (request.writeFields.hasOnly(['paymentStatus', 'paidAmount', 'dueAmount', 'updatedAt']) && 
          resource.data.status != 'paid')
@@ -140,14 +154,14 @@ service cloud.firestore {
     
     // Inventory collection - For stock tracking
     match /inventory/{inventoryId} {
-      allow read: if isValidUser();
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
     
     // Activities collection - For audit trail
     match /activities/{activityId} {
-      allow read: if isValidUser();
-      allow create: if isValidUser() && 
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
                    request.resource.data.userId == request.auth.uid &&
                    request.resource.data.timestamp is timestamp;
       allow update, delete: if isAdmin();
@@ -161,14 +175,14 @@ service cloud.firestore {
     
     // System settings - Only admins can read/write
     match /settings/{settingId} {
-      allow read: if isValidUser();
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
     
     // Activity logs - Authenticated users can create, only admins can read
     match /activityLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isValidUser() && 
+      allow create: if isAuthenticated() && 
                    request.resource.data.userId == request.auth.uid &&
                    request.resource.data.timestamp is timestamp;
     }

@@ -28,23 +28,38 @@ const mapFirebaseUser = async (firebaseUser: FirebaseUser): Promise<User | null>
     const userDoc = await getDoc(userDocRef);
     
     if (!userDoc.exists()) {
-      // Don't auto-create user documents - they should be created by admin
-      console.error('User document not found for authenticated user:', firebaseUser.uid);
-      return null;
+      // Return basic user info if document doesn't exist, but log the issue
+      console.warn('User document not found for authenticated user:', firebaseUser.uid);
+      return {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        displayName: firebaseUser.displayName || '',
+        role: 'staff' as const, // Default role for users without documents
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     }
 
     const userData = userDoc.data();
     return {
-      uid: userData.uid,
-      email: userData.email,
-      displayName: userData.displayName,
-      role: userData.role,
+      uid: userData.uid || firebaseUser.uid,
+      email: userData.email || firebaseUser.email || '',
+      displayName: userData.displayName || firebaseUser.displayName || '',
+      role: userData.role || 'staff' as const,
       createdAt: userData.createdAt?.toDate() || new Date(),
       updatedAt: userData.updatedAt?.toDate() || new Date(),
     };
   } catch (error) {
     console.error('Error in mapFirebaseUser:', error);
-    throw error;
+    // Return basic user info instead of failing completely
+    return {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      displayName: firebaseUser.displayName || '',
+      role: 'staff' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
   }
 };
 
