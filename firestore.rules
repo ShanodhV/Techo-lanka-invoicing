@@ -1,55 +1,167 @@
+// Firebase Firestore Security Rules for Techo Lanka CCTV Management System
+// These rules secure your database while allowing proper functionality
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can access their own user document, admins can access all
+    
+    // Helper functions for user authentication and roles
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isValidUser() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    // Validate required fields for different document types
+    function hasValidProductFields() {
+      return request.resource.data.keys().hasAll(['name', 'category', 'price', 'stock', 'createdAt', 'updatedAt']) &&
+             request.resource.data.name is string &&
+             request.resource.data.category is string &&
+             request.resource.data.price is number &&
+             request.resource.data.stock is number &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp;
+    }
+    
+    function hasValidCustomerFields() {
+      return request.resource.data.keys().hasAll(['name', 'email', 'phone', 'address', 'createdAt', 'updatedAt']) &&
+             request.resource.data.name is string &&
+             request.resource.data.email is string &&
+             request.resource.data.phone is string &&
+             request.resource.data.address is string &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp;
+    }
+    
+    function hasValidQuotationFields() {
+      return request.resource.data.keys().hasAll(['quotationNumber', 'customerId', 'items', 'subtotal', 'tax', 'total', 'status', 'createdAt', 'updatedAt']) &&
+             request.resource.data.quotationNumber is string &&
+             request.resource.data.customerId is string &&
+             request.resource.data.items is list &&
+             request.resource.data.subtotal is number &&
+             request.resource.data.tax is number &&
+             request.resource.data.total is number &&
+             request.resource.data.status is string &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp;
+    }
+    
+    function hasValidInvoiceFields() {
+      return request.resource.data.keys().hasAll(['invoiceNumber', 'customerId', 'items', 'subtotal', 'tax', 'total', 'status', 'createdAt', 'updatedAt']) &&
+             request.resource.data.invoiceNumber is string &&
+             request.resource.data.customerId is string &&
+             request.resource.data.items is list &&
+             request.resource.data.subtotal is number &&
+             request.resource.data.tax is number &&
+             request.resource.data.total is number &&
+             request.resource.data.status is string &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp;
+    }
+    
+    function hasValidUserFields() {
+      return request.resource.data.keys().hasAll(['email', 'role', 'name', 'lastActivity', 'createdAt']) &&
+             request.resource.data.email is string &&
+             request.resource.data.role in ['admin', 'user'] &&
+             request.resource.data.name is string &&
+             request.resource.data.lastActivity is timestamp &&
+             request.resource.data.createdAt is timestamp;
+    }
+    
+    // Users collection - Only admins can read all users, users can read/update their own profile
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      allow write: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read: if isAdmin() || isOwner(userId);
+      allow write: if isAdmin() || (isOwner(userId) && hasValidUserFields());
     }
     
-    // Authenticated users can access business data
-    // Products collection
+    // Products collection - Authenticated users can read, only admins can write
     match /products/{productId} {
-      allow read, write: if request.auth != null;
+      allow read: if isValidUser();
+      allow create: if isAdmin() && hasValidProductFields();
+      allow update: if isAdmin() && hasValidProductFields();
+      allow delete: if isAdmin();
     }
     
-    // Customers collection
+    // Customers collection - Authenticated users can read/write
     match /customers/{customerId} {
-      allow read, write: if request.auth != null;
+      allow read: if isValidUser();
+      allow create: if isValidUser() && hasValidCustomerFields();
+      allow update: if isValidUser() && hasValidCustomerFields();
+      allow delete: if isAdmin(); // Only admins can delete customers
     }
     
-    // Quotations collection
+    // Quotations collection - Authenticated users can read/write
     match /quotations/{quotationId} {
-      allow read, write: if request.auth != null;
+      allow read: if isValidUser();
+      allow create: if isValidUser() && hasValidQuotationFields();
+      allow update: if isValidUser() && hasValidQuotationFields();
+      allow delete: if isAdmin();
     }
     
-    // Invoices collection
+    // Invoices collection - Authenticated users can read/write, with restrictions
     match /invoices/{invoiceId} {
-      allow read, write: if request.auth != null;
-      // Invoices are immutable after creation (except payment status)
-      allow update: if request.auth != null 
-        && (request.writeFields.hasOnly(['paymentStatus', 'paidAmount', 'dueAmount', 'updatedAt'])
-        || resource.data.paymentStatus != 'paid');
+      allow read: if isValidUser();
+      allow create: if isValidUser() && hasValidInvoiceFields();
+      // Allow updates for payment status and admin updates
+      allow update: if isValidUser() && (
+        (hasValidInvoiceFields() && isAdmin()) ||
+        (request.writeFields.hasOnly(['paymentStatus', 'paidAmount', 'dueAmount', 'updatedAt']) && 
+         resource.data.status != 'paid')
+      );
+      allow delete: if isAdmin();
     }
     
-    // Inventory collection
+    // Inventory collection - For stock tracking
     match /inventory/{inventoryId} {
-      allow read, write: if request.auth != null;
+      allow read: if isValidUser();
+      allow write: if isAdmin();
     }
     
-    // Activities collection (for audit trail)
+    // Activities collection - For audit trail
     match /activities/{activityId} {
-      allow read, write: if request.auth != null;
+      allow read: if isValidUser();
+      allow create: if isValidUser() && 
+                   request.resource.data.userId == request.auth.uid &&
+                   request.resource.data.timestamp is timestamp;
+      allow update, delete: if isAdmin();
     }
     
-    // Company settings (admin only)
+    // User sessions collection - Users can only access their own sessions
+    match /userSessions/{sessionId} {
+      allow read, write: if isAuthenticated() && 
+                        request.auth.uid == resource.data.userId;
+    }
+    
+    // System settings - Only admins can read/write
     match /settings/{settingId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read: if isValidUser();
+      allow write: if isAdmin();
+    }
+    
+    // Activity logs - Authenticated users can create, only admins can read
+    match /activityLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isValidUser() && 
+                   request.resource.data.userId == request.auth.uid &&
+                   request.resource.data.timestamp is timestamp;
+    }
+    
+    // Deny all other requests
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
