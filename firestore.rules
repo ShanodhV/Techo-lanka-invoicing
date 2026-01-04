@@ -73,18 +73,32 @@ service cloud.firestore {
     }
     
     function hasValidUserFields() {
-      return request.resource.data.keys().hasAll(['email', 'role', 'name', 'lastActivity', 'createdAt']) &&
+      return request.resource.data.keys().hasAll(['email', 'role', 'displayName', 'createdAt', 'updatedAt']) &&
              request.resource.data.email is string &&
-             request.resource.data.role in ['admin', 'user'] &&
-             request.resource.data.name is string &&
-             request.resource.data.lastActivity is timestamp &&
-             request.resource.data.createdAt is timestamp;
+             request.resource.data.role in ['admin', 'staff', 'user'] &&
+             request.resource.data.displayName is string &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp;
+    }
+
+    function hasValidUserCreationFields() {
+      let requiredFields = ['uid', 'email', 'role', 'displayName', 'createdAt', 'updatedAt'];
+      let validTypes = request.resource.data.uid is string &&
+                      request.resource.data.email is string &&
+                      request.resource.data.role in ['admin', 'staff', 'user'] &&
+                      request.resource.data.displayName is string &&
+                      request.resource.data.createdAt is timestamp &&
+                      request.resource.data.updatedAt is timestamp;
+      
+      // Allow additional fields for user creation by admins
+      return request.resource.data.keys().hasAll(requiredFields) && validTypes;
     }
     
     // Users collection - Only admins can read all users, users can read/update their own profile
     match /users/{userId} {
       allow read: if isAdmin() || isOwner(userId);
-      allow write: if isAdmin() || (isOwner(userId) && hasValidUserFields());
+      allow create: if isAdmin() && hasValidUserCreationFields();
+      allow update: if isAdmin() || (isOwner(userId) && hasValidUserFields());
     }
     
     // Products collection - Authenticated users can read, only admins can write

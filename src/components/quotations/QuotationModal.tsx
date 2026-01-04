@@ -8,13 +8,10 @@ import {
   Search,
   Calculator,
   User,
-  Building2,
-  Phone,
-  MapPin,
   X
 } from 'lucide-react';
+import { CustomerSelector } from '../ui/CustomerSelector';
 import { FullScreenModal } from '../ui/Modal';
-import { useCustomerStore } from '../../store/customerStore';
 import { useProductStore } from '../../store/productStore';
 import type { Quotation, QuotationFormData } from '../../types/quotation';
 import type { Customer } from '../../types/customer';
@@ -35,7 +32,6 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
   quotation,
   onSave,
 }) => {
-  const { searchCustomers } = useCustomerStore();
   const { products, fetchProducts } = useProductStore();
   
   const [formData, setFormData] = useState<QuotationFormData>({
@@ -55,9 +51,6 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
   });
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
-  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -112,18 +105,6 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
     }
   }, [isOpen, mode, quotation]);
 
-  // Customer search functionality
-  const handleCustomerSearch = async (searchTerm: string) => {
-    setCustomerSearch(searchTerm);
-    if (searchTerm.length > 2) {
-      const results = await searchCustomers(searchTerm);
-      setCustomerResults(results);
-      setShowCustomerSearch(true);
-    } else {
-      setShowCustomerSearch(false);
-    }
-  };
-
   const selectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
     setFormData(prev => ({
@@ -136,8 +117,6 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
         company: customer.company || '',
       },
     }));
-    setShowCustomerSearch(false);
-    setCustomerSearch(customer.name);
   };
 
   // Product management
@@ -281,156 +260,24 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
                 Customer Information
               </h3>
 
-              {/* Customer Search/Selection */}
+              {/* Customer Selection */}
               <div className="space-y-4">
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Search Customer
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Customer <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={customerSearch}
-                      onChange={(e) => handleCustomerSearch(e.target.value)}
-                      disabled={isReadOnly}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      placeholder="Search existing customer or enter name for new customer"
-                    />
-                  </div>
-                  
-                  {/* Search Results */}
-                  {showCustomerSearch && customerResults.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {customerResults.map((customer) => (
-                        <button
-                          key={customer.id}
-                          onClick={() => selectCustomer(customer)}
-                          className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="flex-shrink-0">
-                            {customer.company ? (
-                              <Building2 className="h-5 w-5 text-gray-400" />
-                            ) : (
-                              <User className="h-5 w-5 text-gray-400" />
-                            )}
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-900">{customer.name}</div>
-                            <div className="text-sm text-gray-500">
-                              {customer.company && `${customer.company} • `}
-                              {customer.phone}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <CustomerSelector
+                    selectedCustomer={selectedCustomer}
+                    onCustomerSelect={selectCustomer}
+                    onNewCustomerCreate={() => {
+                      // Customer is already created and selected by the CustomerSelector
+                    }}
+                    disabled={isReadOnly}
+                    placeholder="Search existing customer or enter name for new customer"
+                    required
+                    error={errors.customerId}
+                  />
                 </div>
-
-                {errors.customer && (
-                  <p className="text-sm text-red-600">{errors.customer}</p>
-                )}
-
-                {/* Selected Customer Display */}
-                {selectedCustomer && (
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0">
-                        {selectedCustomer.company ? (
-                          <Building2 className="h-6 w-6 text-gray-400 mt-1" />
-                        ) : (
-                          <User className="h-6 w-6 text-gray-400 mt-1" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900">{selectedCustomer.name}</h4>
-                        {selectedCustomer.company && (
-                          <p className="text-sm text-gray-600">{selectedCustomer.company}</p>
-                        )}
-                        <div className="mt-2 space-y-1 text-sm text-gray-600">
-                          <div className="flex items-center">
-                            <Phone className="h-4 w-4 mr-2" />
-                            {selectedCustomer.phone}
-                          </div>
-                          {selectedCustomer.email && (
-                            <div className="flex items-center">
-                              <Mail className="h-4 w-4 mr-2" />
-                              {selectedCustomer.email}
-                            </div>
-                          )}
-                          {selectedCustomer.address?.city && (
-                            <div className="flex items-center">
-                              <MapPin className="h-4 w-4 mr-2" />
-                              {selectedCustomer.address.city}, {selectedCustomer.address.state}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* New Customer Form */}
-                {!selectedCustomer && customerSearch && (
-                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                    <h4 className="font-medium text-blue-900 mb-4">Create New Customer</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <input
-                          type="text"
-                          value={formData.customer?.name || ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            customer: { ...prev.customer!, name: e.target.value }
-                          }))}
-                          disabled={isReadOnly}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          placeholder="Customer name"
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="email"
-                          value={formData.customer?.email || ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            customer: { ...prev.customer!, email: e.target.value }
-                          }))}
-                          disabled={isReadOnly}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          placeholder="Email address"
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="tel"
-                          value={formData.customer?.phone || ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            customer: { ...prev.customer!, phone: e.target.value }
-                          }))}
-                          disabled={isReadOnly}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          placeholder="Phone number"
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="text"
-                          value={formData.customer?.company || ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            customer: { ...prev.customer!, company: e.target.value }
-                          }))}
-                          disabled={isReadOnly}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          placeholder="Company name (optional)"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -674,8 +521,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
             </div>
           </div>
         </div>
-      </div>
-
+      
       {/* Product Search Modal */}
       {showProductSearch && (
         <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4">
@@ -727,6 +573,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
           </div>
         </div>
       )}
+      </div>
     </FullScreenModal>
   );
 };

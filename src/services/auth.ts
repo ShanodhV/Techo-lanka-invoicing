@@ -28,23 +28,9 @@ const mapFirebaseUser = async (firebaseUser: FirebaseUser): Promise<User | null>
     const userDoc = await getDoc(userDocRef);
     
     if (!userDoc.exists()) {
-      // Create user document if it doesn't exist (for new users)
-      const userData = {
-        uid: firebaseUser.uid,
-        email: firebaseUser.email!,
-        displayName: firebaseUser.displayName || '',
-        role: 'staff' as const, // Default role
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      
-      await setDoc(userDocRef, userData);
-      
-      return {
-        ...userData,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      // Don't auto-create user documents - they should be created by admin
+      console.error('User document not found for authenticated user:', firebaseUser.uid);
+      return null;
     }
 
     const userData = userDoc.data();

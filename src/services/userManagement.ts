@@ -3,7 +3,7 @@ import {
   getDocs,
   doc,
   deleteDoc,
-  addDoc,
+  setDoc,
   updateDoc,
   query,
   orderBy,
@@ -58,8 +58,9 @@ export class UserManagementService {
         mustChangePassword: true,
       };
 
-      // Save user data to Firestore
-      await addDoc(collection(db, 'users'), newUser);
+      // Save user data to Firestore using the user's UID as document ID
+      const userDocRef = doc(db, 'users', userCredential.user.uid);
+      await setDoc(userDocRef, newUser);
 
       // Send welcome email to the new user
       try {
